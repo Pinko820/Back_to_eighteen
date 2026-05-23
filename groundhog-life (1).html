@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Groundhog Life</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Orbitron:wght@400;700&display=swap');
+
+  :root {
+    --bg:       #090b0e;
+    --panel:    #0d1117;
+    --panel2:   #111820;
+    --border:   #1a2820;
+    --accent:   #3dff6e;
+    --accent2:  #ffe93d;
+    --accent3:  #ff6b3d;
+    --accent4:  #3db8ff;
+    --purple:   #b03dff;
+    --text:     #b8ccb0;
+    --text-dim: #4a6a45;
+    --bar-bg:   #0c1510;
+    --red:      #ff3d3d;
+    --gold:     #ffd700;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* CRT scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(61,255,110,0.012) 2px, rgba(61,255,110,0.012) 4px
+    );
+    pointer-events: none;
+    z-index: 9000;
+  }
+
+  /* ===================== HEADER ===================== */
+  #header {
+    background: var(--panel);
+    border-bottom: 2px solid var(--accent);
+    padding: 8px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 30px rgba(61,255,110,0.12);
+    position: sticky; top: 0; z-index: 500;
+  }
+
+  #header-left h1 {
+    font-family: 'VT323', monospace;
+    font-size: 30px;
+    color: var(--accent);
+    text-shadow: 0 0 16px var(--accent);
+    letter-spacing: 3px;
+  }
+  #header-left h1::after { content:'█'; animation: blink 0.9s step-end infinite; font-size:0.7em; margin-left:3px; opacity:0.6; }
+
+  .tagline { font-size: 10px; color: var(--text-dim); letter-spacing:1px; }
+
+  #header-stats {
+    display: flex; align-items: center; gap: 16px;
+  }
+
+  .hstat { text-align: center; }
+  .hstat .hl { font-size: 9px; color: var(--text-dim); text-transform:uppercase; letter-spacing:1px; }
+  .hstat .hv { font-family: 'VT323', monospace; font-size: 18px; color: var(--accent2); }
+  .hstat .hv.life-val { color: var(--purple); }
+  .hstat .hv.green { color: var(--accent); }
+
+  .h-sep { width:1px; height:36px; background: var(--border); }
+
+  #btn-playpause {
+    background: var(--bar-bg);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  #btn-playpause:hover { background: var(--accent); color: var(--bg); }
+
+  #speed-select {
+    background: var(--bar-bg);
+    border: 1px solid var(--text-dim);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+
+  /* ===================== LAYOUT ===================== */
+  #main {
+    display: grid;
+    grid-template-columns: 340px 1fr 260px;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 58px - 36px);
+  }
+
+  .panel {
+    background: var(--panel);
+    padding: 12px 14px;
+    overflow-y: auto;
+  }
+
+  .panel-title {
+    font-family: 'VT323', monospace;
+    font-size: 19px;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(61,255,110,0.35);
+  }
+
+  .section-title {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin: 12px 0 6px;
+    border-left: 2px solid var(--text-dim);
+    padding-left: 6px;
+  }
+
+  /* ===================== LEFT PANEL — SCHEDULE ===================== */
+  .step-row {
+    display: flex; align-items: center; gap:8px; margin-bottom:10px;
+  }
+  .step-row label { color: var(--text-dim); font-size:10px; white-space:nowrap; }
+  #step-select {
+    background: var(--bar-bg);
+    border: 1px solid var(--text-dim);
+    color: var(--accent2);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    padding: 3px 6px;
+    flex:1;
+  }
+
+  /* 24h bar */
+  #time-bar-wrap { margin-bottom: 10px; }
+  #time-bar-labels {
+    display: flex; justify-content: space-between;
+    font-size: 9px; color: var(--text-dim); margin-bottom:3px;
+  }
+  #time-bar {
+    height: 12px; background: var(--bar-bg);
+    border: 1px solid var(--border); display:flex; overflow:hidden;
+  }
+  .time-segment { height:100%; transition: width 0.25s ease; }
+
+  .time-totals {
+    display: flex; justify-content: space-between;
+    font-size: 10px; margin: 4px 0 8px; color: var(--text-dim);
+  }
+  .time-totals span.ok   { color: var(--accent); }
+  .time-totals span.warn { color: var(--accent3); }
+
+  /* Task rows — enhanced */
+  .task-card {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 8px 8px 6px;
+    margin-bottom: 6px;
+    transition: border-color 0.2s;
+  }
+  .task-card:hover { border-color: #2a4030; }
+
+  .task-top {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+  }
+
+  .task-label { font-size:12px; }
+  .task-label .icon { margin-right:4px; }
+  .task-label .skill-tag {
+    font-size: 9px; color: var(--text-dim);
+    margin-left: 4px;
+  }
+
+  .task-mins {
+    font-size:12px; color: var(--accent2);
+    min-width: 52px; text-align:right;
+  }
+
+  .btn-adj {
+    width:24px; height:24px;
+    background: var(--bar-bg);
+    border: 1px solid var(--text-dim);
+    color: var(--text);
+    cursor: pointer;
+    font-size:15px; font-family:'VT323',monospace;
+    transition: all 0.1s;
+    display:flex; align-items:center; justify-content:center;
+    border-radius: 1px;
+  }
+  .btn-adj:active { transform: scale(0.88); }
+  .btn-adj.plus:hover  { border-color: var(--accent);  color: var(--accent); }
+  .btn-adj.minus:hover { border-color: var(--red);     color: var(--red); }
+
+  /* Skill mini-bar inside task card */
+  .task-skill-row {
+    display: grid;
+    grid-template-columns: 70px 30px 1fr 44px;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .task-skill-bar { height:5px; background: var(--bar-bg); border: 1px solid var(--border); overflow:hidden; }
+  .task-skill-fill { height:100%; transition: width 0.4s; }
+  .task-skill-xp { font-size:9px; color: var(--text-dim); text-align:right; }
+
+  /* Free time row */
+  .free-card {
+    background: rgba(61,255,110,0.03);
+    border: 1px solid rgba(61,255,110,0.12);
+    padding: 6px 8px;
+    display: flex; justify-content:space-between; align-items:center;
+    font-size:12px;
+    margin-bottom: 4px;
+  }
+  .free-card .fc-label { color: var(--accent); }
+  .free-card .fc-time  { color: var(--accent); font-family:'VT323',monospace; font-size:16px; }
+
+  /* Jobs */
+  .job-card {
+    background: var(--bar-bg);
+    border: 1px solid var(--border);
+    padding: 7px 9px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .job-card:hover  { border-color: var(--text-dim); }
+  .job-card.active { border-color: var(--accent); background: rgba(61,255,110,0.06); }
+  .job-name { font-size:12px; }
+  .job-pay  { font-size:11px; color: var(--accent2); }
+  .job-desc { font-size:10px; color: var(--text-dim); margin-top:2px; }
+  .job-karma { font-size: 9px; color: var(--purple); margin-top:1px; }
+
+  /* ===================== CENTER PANEL ===================== */
+  .vital-bar-block { margin-bottom:12px; }
+  .vital-header {
+    display:flex; justify-content:space-between;
+    font-size:11px; margin-bottom:3px;
+  }
+  .vital-label { color: var(--text-dim); }
+  .vital-bar-outer {
+    height:9px; background: var(--bar-bg);
+    border:1px solid var(--border); overflow:hidden;
+  }
+  .vital-bar-inner { height:100%; transition: width 0.5s ease; }
+  .bar-energy   .vital-bar-inner { background: linear-gradient(90deg,#2a8a4a,#3dff6e); }
+  .bar-happiness .vital-bar-inner { background: linear-gradient(90deg,#8a3a2a,#ff6b3d); }
+  .bar-health   .vital-bar-inner { background: linear-gradient(90deg,#2a5a8a,#3db8ff); }
+
+  /* Skills center */
+  .skill-card {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    padding: 7px 9px;
+    margin-bottom: 5px;
+  }
+  .skill-top {
+    display:grid;
+    grid-template-columns: 1fr 50px 60px;
+    align-items:center; gap:8px; margin-bottom:4px;
+  }
+  .skill-name-full { font-size:12px; }
+  .skill-lv { font-family:'VT323',monospace; font-size:18px; color: var(--accent2); text-align:right; }
+  .karma-mult {
+    font-size:10px; color: var(--purple); text-align:right;
+  }
+  .skill-xp-outer {
+    height:7px; background: var(--bar-bg); border:1px solid var(--border); overflow:hidden;
+  }
+  .skill-xp-fill { height:100%; transition: width 0.4s; }
+  .skill-xp-text { font-size:9px; color: var(--text-dim); margin-top:2px; text-align:right; }
+
+  .cooking-fill    { background: linear-gradient(90deg,#7a3a00,#ff9f3d); }
+  .strength-fill   { background: linear-gradient(90deg,#7a0020,#ff3d6b); }
+  .programming-fill{ background: linear-gradient(90deg,#003a7a,#3db8ff); }
+  .research-fill   { background: linear-gradient(90deg,#5a007a,#b03dff); }
+  .charisma-fill   { background: linear-gradient(90deg,#7a6a00,#ffe93d); }
+
+  /* Karma preview */
+  .karma-box {
+    background: rgba(176,61,255,0.06);
+    border: 1px solid rgba(176,61,255,0.25);
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    font-size:11px;
+  }
+  .karma-box .kb-title {
+    font-family:'VT323',monospace; font-size:16px; color: var(--purple);
+    margin-bottom:4px; letter-spacing:1px;
+  }
+  .karma-row { display:flex; justify-content:space-between; margin-bottom:2px; }
+  .karma-val { color: var(--purple); }
+
+  /* Event box */
+  #event-box {
+    background: rgba(255,233,61,0.05);
+    border: 1px solid var(--accent2);
+    padding: 7px 10px;
+    margin-bottom:10px;
+    font-size:11px; color: var(--accent2);
+    display:none;
+  }
+
+  /* Day progress */
+  #dp-wrap { margin-bottom:10px; }
+  #dp-label { display:flex; justify-content:space-between; font-size:9px; color:var(--text-dim); margin-bottom:3px; }
+  #dp-bar   { height:5px; background:var(--bar-bg); border:1px solid var(--border); }
+  #dp-fill  { height:100%; background: var(--accent4); transition: width 0.08s linear; }
+
+  /* Log */
+  #log {
+    height:150px; overflow-y:auto;
+    background: var(--bar-bg);
+    border: 1px solid var(--border);
+    padding: 6px 8px; font-size:11px;
+  }
+  #log::-webkit-scrollbar { width:3px; }
+  #log::-webkit-scrollbar-thumb { background: var(--text-dim); }
+  .log-entry { margin-bottom:2px; color:var(--text-dim); }
+  .log-entry.highlight { color: var(--accent); }
+  .log-entry.warn      { color: var(--accent3); }
+  .log-entry.money     { color: var(--accent2); }
+  .log-entry.karma     { color: var(--purple); }
+
+  /* ===================== RIGHT PANEL ===================== */
+  .money-big {
+    font-family:'VT323',monospace; font-size:32px;
+    color: var(--accent2); text-shadow:0 0 10px rgba(255,233,61,0.35);
+    margin-bottom:2px;
+  }
+  .eco-row { display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px; }
+  .eco-label { color:var(--text-dim); }
+  .pos { color: var(--accent); }
+  .neg { color: var(--red); }
+
+  .info-row { display:flex; justify-content:space-between; margin-bottom:5px; font-size:11px; }
+  .info-label { color:var(--text-dim); }
+  .info-value { color:var(--text); }
+
+  .divider { border:none; border-top:1px solid var(--border); margin:10px 0; }
+
+  /* ===================== FOOTER BUTTONS ===================== */
+  #footer {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 6px 18px;
+    display: flex;
+    align-items:center;
+    gap:10px;
+  }
+  .footer-btn {
+    background: var(--bar-bg);
+    border: 1px solid var(--text-dim);
+    color: var(--text-dim);
+    font-family:'Share Tech Mono',monospace;
+    font-size:11px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .footer-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .footer-btn.danger:hover { border-color: var(--red); color: var(--red); }
+  #save-status { font-size:10px; color:var(--text-dim); margin-left:auto; }
+
+  /* ===================== DEATH OVERLAY ===================== */
+  #death-overlay {
+    display:none;
+    position:fixed; inset:0;
+    background: rgba(0,0,0,0.88);
+    z-index:8000;
+    align-items:center; justify-content:center;
+    flex-direction:column;
+  }
+  #death-overlay.show { display:flex; }
+  .death-box {
+    background: var(--panel);
+    border: 2px solid var(--purple);
+    box-shadow: 0 0 60px rgba(176,61,255,0.4);
+    padding: 40px 50px;
+    text-align:center;
+    max-width: 480px;
+  }
+  .death-title {
+    font-family:'VT323',monospace;
+    font-size:52px; color: var(--purple);
+    text-shadow:0 0 20px var(--purple);
+    margin-bottom:8px;
+  }
+  .death-sub { font-size:13px; color:var(--text-dim); margin-bottom:20px; line-height:1.5; }
+  .death-stats { background: var(--bar-bg); padding:14px 18px; margin-bottom:20px; text-align:left; }
+  .death-stat-row { display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px; }
+  .death-stat-key { color:var(--text-dim); }
+  .death-stat-val { color:var(--accent2); }
+  .death-karma-row { display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
+  .death-karma-key { color:var(--text-dim); }
+  .death-karma-val { color:var(--purple); }
+  #btn-reincarnate {
+    background: var(--purple);
+    border: none;
+    color: #fff;
+    font-family:'VT323',monospace;
+    font-size:28px;
+    padding: 10px 40px;
+    cursor: pointer;
+    letter-spacing:2px;
+    transition: all 0.2s;
+    box-shadow: 0 0 20px rgba(176,61,255,0.5);
+  }
+  #btn-reincarnate:hover { background:#c84dff; box-shadow:0 0 40px rgba(176,61,255,0.8); transform:scale(1.04); }
+
+  /* ===================== NOTIFICATIONS ===================== */
+  #notif {
+    position:fixed; top:68px; right:16px;
+    z-index:9500; display:flex; flex-direction:column; gap:5px;
+    pointer-events:none;
+  }
+  .notif-toast {
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 6px 12px; font-size:11px;
+    animation: tIn 0.2s ease, tOut 0.4s ease 2.6s forwards;
+    box-shadow: 0 0 16px rgba(61,255,110,0.25);
+  }
+  .notif-toast.warn  { border-color:var(--accent3); color:var(--accent3); }
+  .notif-toast.money { border-color:var(--accent2); color:var(--accent2); }
+  .notif-toast.karma { border-color:var(--purple);  color:var(--purple);  }
+  @keyframes tIn  { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes tOut { from{opacity:1} to{opacity:0} }
+
+  @keyframes blink { 50%{opacity:0} }
+</style>
+</head>
+<body>
+
+<!-- NOTIFICATIONS -->
+<div id="notif"></div>
+
+<!-- DEATH / REINCARNATION OVERLAY -->
+<div id="death-overlay">
+  <div class="death-box">
+    <div class="death-title">✦ GAME OVER ✦</div>
+    <div class="death-sub">Has llegado al final de esta vida.<br>Tu karma se transmite a la siguiente existencia.</div>
+    <div class="death-stats" id="death-stats-content"></div>
+    <button id="btn-reincarnate">⟳ REENCARNAR</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div id="header">
+  <div id="header-left">
+    <h1>GROUNDHOG LIFE</h1>
+    <div class="tagline">Every day is a new chance. Same as yesterday.</div>
+  </div>
+  <div id="header-stats">
+    <div class="hstat"><div class="hl">VIDA</div><div class="hv life-val" id="h-life">1</div></div>
+    <div class="h-sep"></div>
+    <div class="hstat"><div class="hl">EDAD</div><div class="hv" id="h-age">18y 0d</div></div>
+    <div class="hstat"><div class="hl">DÍA</div><div class="hv green" id="h-day">1</div></div>
+    <div class="h-sep"></div>
+    <div class="hstat"><div class="hl">DINERO</div><div class="hv" id="h-money">$0</div></div>
+    <div class="h-sep"></div>
+    <div>
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:3px;">SPEED</div>
+      <select id="speed-select">
+        <option value="1000">1×</option>
+        <option value="500">2×</option>
+        <option value="200" selected>5×</option>
+        <option value="100">10×</option>
+        <option value="50">20×</option>
+      </select>
+    </div>
+    <button id="btn-playpause">⏸ PAUSE</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- ============ LEFT: SCHEDULE ============ -->
+  <div class="panel" id="schedule-panel">
+    <div class="panel-title">◈ DAILY SCHEDULE</div>
+
+    <div class="step-row">
+      <label>STEP:</label>
+      <select id="step-select">
+        <option value="5">5 min</option>
+        <option value="10">10 min</option>
+        <option value="15">15 min</option>
+        <option value="30" selected>30 min</option>
+        <option value="60">1 h</option>
+        <option value="120">2 h</option>
+        <option value="240">4 h</option>
+        <option value="480">8 h</option>
+      </select>
+    </div>
+
+    <div id="time-bar-wrap">
+      <div id="time-bar-labels">
+        <span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span>
+      </div>
+      <div id="time-bar"></div>
+    </div>
+
+    <div class="time-totals">
+      <span>Asignado: <span id="total-sched" class="ok">0</span> min</span>
+      <span>Libre: <span id="total-free" class="ok">1440</span> min</span>
+    </div>
+
+    <div id="tasks-container"></div>
+
+    <div class="section-title">▸ Empleo activo</div>
+    <div id="jobs-container"></div>
+  </div>
+
+  <!-- ============ CENTER: VITALS + SKILLS + LOG ============ -->
+  <div class="panel" id="center-panel">
+    <div class="panel-title">◈ VITALS & SKILLS</div>
+
+    <div id="event-box"></div>
+
+    <div id="dp-wrap">
+      <div id="dp-label"><span>DÍA EN CURSO</span><span id="dp-time">00:00</span></div>
+      <div id="dp-bar"><div id="dp-fill" style="width:0%"></div></div>
+    </div>
+
+    <!-- Vitals -->
+    <div class="vital-bar-block bar-energy">
+      <div class="vital-header"><span class="vital-label">⚡ ENERGÍA</span><span id="v-energy">0.80</span></div>
+      <div class="vital-bar-outer"><div class="vital-bar-inner" id="bar-energy" style="width:80%"></div></div>
+    </div>
+    <div class="vital-bar-block bar-happiness">
+      <div class="vital-header"><span class="vital-label">★ FELICIDAD</span><span id="v-happiness">0.60</span></div>
+      <div class="vital-bar-outer"><div class="vital-bar-inner" id="bar-happiness" style="width:60%"></div></div>
+    </div>
+    <div class="vital-bar-block bar-health">
+      <div class="vital-header"><span class="vital-label">♥ SALUD</span><span id="v-health">1.00</span></div>
+      <div class="vital-bar-outer"><div class="vital-bar-inner" id="bar-health" style="width:100%"></div></div>
+    </div>
+
+    <!-- Karma multiplier display -->
+    <div class="karma-box" id="karma-box" style="display:none">
+      <div class="kb-title">✦ KARMA ACTIVO</div>
+      <div id="karma-rows"></div>
+    </div>
+
+    <div class="section-title">▸ Habilidades</div>
+    <div id="skills-container"></div>
+
+    <div class="section-title">▸ Log</div>
+    <div id="log"></div>
+  </div>
+
+  <!-- ============ RIGHT: ECONOMY + PROFILE ============ -->
+  <div class="panel" id="right-panel">
+    <div class="panel-title">◈ ECONOMÍA</div>
+
+    <div class="money-big">$<span id="money-val">0</span></div>
+    <div class="eco-row"><span class="eco-label">Ingreso/día</span><span class="pos" id="income-val">+$0</span></div>
+    <div class="eco-row"><span class="eco-label">Gastos/día</span><span class="neg" id="expense-val">-$0</span></div>
+    <div class="eco-row" style="font-size:13px;margin-top:4px;">
+      <span class="eco-label">Net/día</span>
+      <span id="net-val" class="pos">+$0</span>
+    </div>
+
+    <hr class="divider">
+    <div class="panel-title" style="font-size:16px;">◈ PERFIL</div>
+
+    <div class="info-row"><span class="info-label">Vida #</span><span class="info-value" id="p-life" style="color:var(--purple)">1</span></div>
+    <div class="info-row"><span class="info-label">Edad</span><span class="info-value" id="p-age">18 años</span></div>
+    <div class="info-row"><span class="info-label">Empleo</span><span class="info-value" id="p-job">—</span></div>
+    <div class="info-row"><span class="info-label">Mult. Energía</span><span class="info-value" id="p-emult">×1.00</span></div>
+    <div class="info-row"><span class="info-label">Shop XP boost</span><span class="info-value" id="p-shopxp" style="color:var(--gold)">×1.00</span></div>
+    <div class="info-row"><span class="info-label">Time Warp</span><span class="info-value" id="p-timewarp" style="color:var(--gold)">×1.00</span></div>
+
+    <hr class="divider">
+    <div class="panel-title" style="font-size:16px;">◈ RESUMEN DÍA</div>
+    <div id="daily-summary"></div>
+  </div>
+
+</div>
+
+<!-- FOOTER -->
+<div id="footer">
+  <button class="footer-btn" id="btn-save">💾 Save Game</button>
+  <button class="footer-btn danger" id="btn-reset">✕ Reset Game</button>
+  <span id="save-status">Sin guardar</span>
+</div>
+
+<script>
+'use strict';
+// ================================================================
+//  GROUNDHOG LIFE v2 — Full Engine
+// ================================================================
+
+const TOTAL_MIN = 1440;
+const DEATH_AGE = 70;
+const SAVE_KEY   = 'groundhog_save_v2';
+const SAVE_INTERVAL_MS = 10000;
+
+// ---- TASK DEFINITIONS (reset on reincarnation) ----
+function defaultTasks() {
+  return [
+    { id:'sleep',    name:'Sleep',    minutes:0, icon:'🌙', color:'#3db8ff',  skill:'health'  },
+    { id:'work',     name:'Work',     minutes:0, icon:'💼', color:'#ffe93d',  skill:null      },
+    { id:'research', name:'Research', minutes:0, icon:'📚', color:'#b03dff',  skill:'research'},
+    { id:'eat',      name:'Eat',      minutes:0, icon:'🍔', color:'#ff6b3d',  skill:null      },
+    { id:'chores',   name:'Chores',   minutes:0, icon:'🧹', color:'#3dff6e',  skill:'strength'},
+  ];
+}
+
+// ---- JOB DEFINITIONS ----
+const JOBS = [
+  {
+    id:'burger_king', name:'Burger King', icon:'🍔',
+    pay:60, payPerMin:60/480,
+    energyDrain:0.0030, happinessDrain:0.0020,
+    skills:{ cooking:1.0 },
+    desc:'Paga baja. Entrena Cocina.',
+  },
+  {
+    id:'construction', name:'Albañilería', icon:'🧱',
+    pay:100, payPerMin:100/480,
+    energyDrain:0.0060, happinessDrain:0.0030,
+    skills:{ strength:2.0 },
+    desc:'Paga media. Drena energía. +Fuerza.',
+  },
+  {
+    id:'programming', name:'Programación', icon:'💻',
+    pay:0, payPerMin:0,
+    energyDrain:0.0020, happinessDrain:0.0010,
+    skills:{ programming:3.0 },
+    desc:'Sin paga. +Prog. muy rápido.',
+  },
+];
+
+const SKILL_META = {
+  cooking:     { icon:'🍳', label:'Cocina',        fillClass:'cooking-fill'     },
+  strength:    { icon:'💪', label:'Fuerza',         fillClass:'strength-fill'    },
+  programming: { icon:'💻', label:'Programación',   fillClass:'programming-fill' },
+  research:    { icon:'🔬', label:'Investigación',  fillClass:'research-fill'    },
+  charisma:    { icon:'🗣️', label:'Carisma',        fillClass:'charisma-fill'    },
+};
+
+// ---- DEFAULT SKILL STATE ----
+function defaultSkills() {
+  return {
+    cooking:     { level:1, xp:0, xpNext:100 },
+    strength:    { level:1, xp:0, xpNext:100 },
+    programming: { level:1, xp:0, xpNext:100 },
+    research:    { level:1, xp:0, xpNext:100 },
+    charisma:    { level:1, xp:0, xpNext:100 },
+  };
+}
+
+// ---- DEFAULT KARMA (persists across lives) ----
+function defaultKarma() {
+  return { cooking:1, strength:1, programming:1, research:1, charisma:1 };
+}
+
+// ================================================================
+//  PLAYER STATE
+// ================================================================
+let tasks = defaultTasks();
+
+let state = {
+  // Meta / permanent
+  lifeNumber: 1,
+  karma: defaultKarma(),        // Permanent XP multipliers per skill
+
+  // Per-life
+  day: 1,
+  dayMinute: 0,
+  ageYears: 18,
+  ageDays: 0,
+  money: 0,
+
+  energy:    0.80,
+  happiness: 0.60,
+  health:    1.00,
+
+  skills: defaultSkills(),
+  selectedJob: 'burger_king',
+
+  // Engine
+  paused: false,
+  speed: 200,
+
+  // Shop multipliers — ready for future monetization
+  shopMultipliers: {
+    globalExpBoost: 1,    // multiplies ALL skill XP gains
+    timeWarp:       1,    // multiplies tick speed (applied in startTick)
+    moneyBoost:     1,    // multiplies all money income
+    energyRegen:    1,    // multiplies sleep/eat energy restore
+  },
+};
+
+// ================================================================
+//  HELPERS
+// ================================================================
+function scheduledMinutes() { return tasks.reduce((s,t) => s + t.minutes, 0); }
+function freeMinutes()      { return TOTAL_MIN - scheduledMinutes(); }
+function getStep()          { return parseInt(document.getElementById('step-select').value); }
+function getJob()           { return JOBS.find(j => j.id === state.selectedJob); }
+function energyMult()       { return 0.2 + state.energy * 1.8; }
+
+// ---- KARMA FORMULA ----
+// Each level above 1 adds +8% XP for that skill (compounding), capped at ×10
+function karmaMultForSkill(skillId) {
+  const base = state.karma[skillId] ?? 1;
+  return Math.min(10, base);
+}
+// When player dies, we update karma: mult = 1 + (level-1)*0.08 per skill
+function computeKarmaFromSkills() {
+  for (const [id, s] of Object.entries(state.skills)) {
+    const gained = 1 + (s.level - 1) * 0.08;
+    // Karma compounds across lives (keep best)
+    state.karma[id] = Math.max(state.karma[id] ?? 1, gained);
+  }
+}
+
+// ---- ECONOMY ----
+function calcIncome() {
+  const j = getJob();
+  const workTask = tasks.find(t => t.id === 'work');
+  return j ? j.payPerMin * workTask.minutes * state.shopMultipliers.moneyBoost : 0;
+}
+function calcExpenses() { return 20 + (state.ageYears - 18) * 2; }
+function calcNet()      { return calcIncome() - calcExpenses(); }
+
+// ================================================================
+//  TICK ENGINE
+// ================================================================
+let tickInterval = null;
+
+function startTick() {
+  clearInterval(tickInterval);
+  const effectiveSpeed = Math.max(10, state.speed / state.shopMultipliers.timeWarp);
+  tickInterval = setInterval(tick, effectiveSpeed);
+}
+
+function tick() {
+  if (state.paused) return;
+  state.dayMinute++;
+  applyMinuteEffects(state.dayMinute);
+
+  // Day progress bar
+  const pct = (state.dayMinute / TOTAL_MIN * 100).toFixed(2);
+  document.getElementById('dp-fill').style.width = pct + '%';
+  const h = Math.floor(state.dayMinute / 60);
+  const m = state.dayMinute % 60;
+  document.getElementById('dp-time').textContent =
+    String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+
+  if (state.dayMinute >= TOTAL_MIN) { endDay(); return; }
+
+  clamp();
+  renderStats();
+}
+
+function getCurrentTask(minute) {
+  let acc = 0;
+  for (const t of tasks) {
+    if (t.minutes <= 0) continue;
+    acc += t.minutes;
+    if (minute <= acc) return t;
+  }
+  return null; // free time
+}
+
+function applyMinuteEffects(minute) {
+  const t = getCurrentTask(minute);
+  const j = getJob();
+  const em  = energyMult();
+  const shop = state.shopMultipliers;
+
+  if (!t) {
+    // Free time
+    state.happiness += 0.0006;
+    state.energy    += 0.0003;
+    return;
+  }
+
+  switch (t.id) {
+    case 'sleep':
+      state.energy    += 0.00130 * shop.energyRegen;
+      state.happiness += 0.00008;
+      state.health    += 0.00010;
+      break;
+
+    case 'work':
+      state.energy    -= j ? j.energyDrain : 0.003;
+      state.happiness -= j ? j.happinessDrain : 0.002;
+      state.money     += j ? j.payPerMin * shop.moneyBoost : 0;
+      if (j) {
+        for (const [sk, rate] of Object.entries(j.skills)) {
+          gainXP(sk, rate * em * 0.1 * shop.globalExpBoost);
+        }
+      }
+      break;
+
+    case 'research':
+      state.energy -= 0.0012;
+      gainXP('research',    1.5 * em * 0.1 * shop.globalExpBoost);
+      gainXP('programming', 0.4 * em * 0.1 * shop.globalExpBoost);
+      gainXP('charisma',    0.1 * em * 0.1 * shop.globalExpBoost);
+      break;
+
+    case 'eat':
+      state.energy    += 0.0022 * shop.energyRegen;
+      state.happiness += 0.0006;
+      state.health    += 0.00012;
+      break;
+
+    case 'chores':
+      state.energy    -= 0.0006;
+      state.happiness -= 0.0001;
+      gainXP('strength', 0.4 * em * 0.1 * shop.globalExpBoost);
+      break;
+  }
+}
+
+function gainXP(skillId, amount) {
+  if (!state.skills[skillId]) return;
+  const s = state.skills[skillId];
+  // Apply karma (permanent) multiplier
+  amount *= karmaMultForSkill(skillId);
+  s.xp += amount;
+  while (s.xp >= s.xpNext) {
+    s.xp -= s.xpNext;
+    s.level++;
+    s.xpNext = Math.floor(s.xpNext * 1.6);
+    toast(`📈 LEVEL UP: ${SKILL_META[skillId].label} → Lv.${s.level}`, 'highlight');
+    addLog(`${SKILL_META[skillId].icon} ${SKILL_META[skillId].label} subió a nivel ${s.level}!`, 'highlight');
+  }
+}
+
+// ---- END OF DAY ----
+function endDay() {
+  state.dayMinute = 0;
+  state.day++;
+  state.ageDays++;
+  if (state.ageDays >= 365) {
+    state.ageDays = 0;
+    state.ageYears++;
+    addLog(`🎂 ¡Cumpleaños! Ahora tienes ${state.ageYears} años.`, 'highlight');
+    toast(`🎂 ¡${state.ageYears} años!`, 'money');
+  }
+
+  state.money -= calcExpenses();
+  addLog(`— Día ${state.day-1} completado. Net: ${calcNet()>=0?'+':''}$${calcNet().toFixed(0)}/día`, 'money');
+  maybeEvent();
+
+  // Check death
+  if (state.ageYears >= DEATH_AGE) {
+    triggerDeath();
+    return;
+  }
+
+  document.getElementById('dp-fill').style.width = '0%';
+  renderAll();
+}
+
+// ---- RANDOM EVENTS ----
+function maybeEvent() {
+  const r = Math.random();
+  if      (r < 0.04) { showEvent('💰 ¡Encontraste $50 en el suelo!'); state.money += 50; }
+  else if (r < 0.07) { showEvent('😷 Te resfriaste. −0.05 Salud.'); state.health -= 0.05; }
+  else if (r < 0.09) { showEvent('🏆 ¡Tu jefe te felicitó! +0.08 Felicidad'); state.happiness += 0.08; }
+  else if (r < 0.10) { showEvent('🎲 ¡Lotería! +$200'); state.money += 200; toast('+$200 LOTERÍA','money'); }
+}
+
+function showEvent(msg) {
+  const box = document.getElementById('event-box');
+  box.textContent = msg; box.style.display = 'block';
+  addLog(msg, 'warn');
+  setTimeout(() => { box.style.display = 'none'; }, 5000);
+}
+
+function clamp() {
+  state.energy    = Math.max(0, Math.min(1, state.energy));
+  state.happiness = Math.max(0, Math.min(1, state.happiness));
+  state.health    = Math.max(0, Math.min(1, state.health));
+  state.money     = Math.max(0, state.money);
+}
+
+// ================================================================
+//  DEATH & REINCARNATION
+// ================================================================
+function triggerDeath() {
+  clearInterval(tickInterval);
+  state.paused = true;
+
+  // Compute karma from this life's skills
+  computeKarmaFromSkills();
+
+  // Build death screen
+  let statsHTML = '<div style="font-family:VT323,monospace;font-size:16px;color:var(--purple);margin-bottom:8px;">RESUMEN DE VIDA ' + state.lifeNumber + '</div>';
+  statsHTML += `<div class="death-stat-row"><span class="death-stat-key">Días vividos</span><span class="death-stat-val">${state.day}</span></div>`;
+  statsHTML += `<div class="death-stat-row"><span class="death-stat-key">Dinero acumulado</span><span class="death-stat-val">$${Math.floor(state.money)}</span></div>`;
+  statsHTML += '<div style="font-size:10px;color:var(--text-dim);margin:8px 0 4px;">KARMA GANADO (multiplicadores para próxima vida):</div>';
+  for (const [id, s] of Object.entries(state.skills)) {
+    const m = state.karma[id] ?? 1;
+    statsHTML += `<div class="death-karma-row">
+      <span class="death-karma-key">${SKILL_META[id].icon} ${SKILL_META[id].label} (Lv.${s.level})</span>
+      <span class="death-karma-val">×${m.toFixed(2)} XP</span>
+    </div>`;
+  }
+
+  document.getElementById('death-stats-content').innerHTML = statsHTML;
+  document.getElementById('death-overlay').classList.add('show');
+  addLog('💀 Has llegado a los 70 años. Fin de la vida ' + state.lifeNumber + '.', 'karma');
+}
+
+document.getElementById('btn-reincarnate').addEventListener('click', () => {
+  document.getElementById('death-overlay').classList.remove('show');
+  reincarnate();
+});
+
+function reincarnate() {
+  const nextLife  = state.lifeNumber + 1;
+  const savedKarma = { ...state.karma };
+  const savedShop  = { ...state.shopMultipliers };
+
+  // Reset tasks to zero
+  tasks = defaultTasks();
+
+  // Reset state — keep karma and life number
+  state = {
+    lifeNumber: nextLife,
+    karma: savedKarma,
+
+    day: 1, dayMinute: 0,
+    ageYears: 18, ageDays: 0,
+    money: 0,
+
+    energy: 0.80, happiness: 0.60, health: 1.00,
+
+    skills: defaultSkills(),
+    selectedJob: 'burger_king',
+
+    paused: false,
+    speed: state.speed,
+
+    shopMultipliers: savedShop,
+  };
+
+  toast(`✦ VIDA ${nextLife} — El karma te acompaña.`, 'karma');
+  addLog(`✦ Reencarnación #${nextLife}. Karma activo en todas las habilidades.`, 'karma');
+
+  document.getElementById('dp-fill').style.width = '0%';
+  document.getElementById('dp-time').textContent = '00:00';
+  document.getElementById('btn-playpause').textContent = '⏸ PAUSE';
+
+  renderAll();
+  startTick();
+  saveGame();
+}
+
+// ================================================================
+//  RENDER
+// ================================================================
+function renderAll() {
+  renderTasks();
+  renderTimeBar();
+  renderJobs();
+  renderStats();
+  renderSkills();
+  renderKarmaBox();
+  renderEconomy();
+  renderDailySummary();
+}
+
+// ---- TASKS ----
+function renderTasks() {
+  const container = document.getElementById('tasks-container');
+  const free  = freeMinutes();
+  const sched = scheduledMinutes();
+
+  document.getElementById('total-sched').textContent = sched;
+  document.getElementById('total-free').textContent  = free;
+  document.getElementById('total-free').className    = free <= 0 ? 'warn' : 'ok';
+
+  container.innerHTML = '';
+
+  tasks.forEach(t => {
+    const h = Math.floor(t.minutes / 60), m = t.minutes % 60;
+    const timeStr = t.minutes === 0 ? '0m' : (h > 0 ? `${h}h${m > 0 ? m+'m' : ''}` : `${m}m`);
+
+    // skill mini-bar (if task has associated skill)
+    let skillBarHTML = '';
+    if (t.skill && state.skills[t.skill]) {
+      const sk  = state.skills[t.skill];
+      const pct = (sk.xp / sk.xpNext * 100).toFixed(1);
+      const meta = SKILL_META[t.skill] || {};
+      skillBarHTML = `
+        <div class="task-skill-row">
+          <span>${meta.icon||''} ${meta.label||t.skill}</span>
+          <span>Lv.${sk.level}</span>
+          <div class="task-skill-bar"><div class="task-skill-fill ${meta.fillClass||''}" style="width:${pct}%"></div></div>
+          <span class="task-skill-xp">${sk.xp.toFixed(0)}/${sk.xpNext}</span>
+        </div>`;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.innerHTML = `
+      <div class="task-top">
+        <div class="task-label">
+          <span class="icon">${t.icon}</span>${t.name}
+          ${t.skill ? `<span class="skill-tag">[${t.skill}]</span>` : ''}
+        </div>
+        <div class="task-mins">${timeStr}</div>
+        <button class="btn-adj minus" data-id="${t.id}">−</button>
+        <button class="btn-adj plus"  data-id="${t.id}">+</button>
+      </div>
+      ${skillBarHTML}
+    `;
+    container.appendChild(card);
+  });
+
+  // Free time card
+  const fh = Math.floor(free/60), fm = free%60;
+  const freeStr = free === 0 ? '0m' : (fh > 0 ? `${fh}h${fm>0?fm+'m':''}` : `${fm}m`);
+  const fc = document.createElement('div');
+  fc.className = 'free-card';
+  fc.innerHTML = `<span class="fc-label">☀️ Free Time</span><span class="fc-time">${freeStr}</span>`;
+  container.appendChild(fc);
+
+  // Bind buttons
+  container.querySelectorAll('.btn-adj.plus').forEach(btn =>
+    btn.addEventListener('click', () => adjustTask(btn.dataset.id, 1)));
+  container.querySelectorAll('.btn-adj.minus').forEach(btn =>
+    btn.addEventListener('click', () => adjustTask(btn.dataset.id, -1)));
+}
+
+function adjustTask(id, dir) {
+  const step = getStep();
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+
+  if (dir === 1) {
+    if (freeMinutes() < step) { toast('⚠ No hay Free Time disponible!', 'warn'); return; }
+    t.minutes += step;
+  } else {
+    t.minutes = Math.max(0, t.minutes - step);
+  }
+  renderTasks();
+  renderTimeBar();
+  renderEconomy();
+  renderDailySummary();
+}
+
+// ---- TIME BAR ----
+function renderTimeBar() {
+  const bar = document.getElementById('time-bar');
+  bar.innerHTML = '';
+  tasks.forEach(t => {
+    if (t.minutes <= 0) return;
+    const seg = document.createElement('div');
+    seg.className = 'time-segment';
+    seg.style.width     = (t.minutes / TOTAL_MIN * 100) + '%';
+    seg.style.background = t.color;
+    seg.title = `${t.name}: ${t.minutes}min`;
+    bar.appendChild(seg);
+  });
+  const free = freeMinutes();
+  if (free > 0) {
+    const seg = document.createElement('div');
+    seg.className = 'time-segment';
+    seg.style.width     = (free / TOTAL_MIN * 100) + '%';
+    seg.style.background = '#1a2a18';
+    seg.title = `Free: ${free}min`;
+    bar.appendChild(seg);
+  }
+}
+
+// ---- JOBS ----
+function renderJobs() {
+  const container = document.getElementById('jobs-container');
+  container.innerHTML = '';
+  JOBS.forEach(j => {
+    const card = document.createElement('div');
+    card.className = 'job-card' + (state.selectedJob === j.id ? ' active' : '');
+    const skillStr = Object.keys(j.skills).map(k => {
+      const km = karmaMultForSkill(k);
+      return `+${SKILL_META[k]?.label||k}${km > 1 ? ` ×${km.toFixed(1)}` : ''}`;
+    }).join(', ');
+    card.innerHTML = `
+      <div>
+        <div class="job-name">${j.icon} ${j.name}</div>
+        <div class="job-desc">${j.desc}</div>
+        <div class="job-karma">${skillStr}</div>
+      </div>
+      <div class="job-pay">${j.pay > 0 ? '$'+j.pay+'/jorn' : 'GRATIS'}</div>
+    `;
+    card.addEventListener('click', () => {
+      state.selectedJob = j.id;
+      renderJobs(); renderEconomy(); renderDailySummary();
+      addLog(`💼 Empleo: ${j.name}`, 'highlight');
+    });
+    container.appendChild(card);
+  });
+}
+
+// ---- STATS ----
+function renderStats() {
+  const setBar = (id, barId, val) => {
+    document.getElementById(id).textContent = val.toFixed(2);
+    document.getElementById(barId).style.width = (val*100).toFixed(1)+'%';
+  };
+  setBar('v-energy',    'bar-energy',    state.energy);
+  setBar('v-happiness', 'bar-happiness', state.happiness);
+  setBar('v-health',    'bar-health',    state.health);
+
+  document.getElementById('h-age').textContent   = `${state.ageYears}y ${state.ageDays}d`;
+  document.getElementById('h-day').textContent   = state.day;
+  document.getElementById('h-money').textContent = '$' + Math.floor(state.money);
+  document.getElementById('h-life').textContent  = state.lifeNumber;
+
+  document.getElementById('p-life').textContent  = state.lifeNumber;
+  document.getElementById('p-age').textContent   = state.ageYears + ' años';
+  document.getElementById('p-job').textContent   = getJob()?.name || '—';
+  document.getElementById('p-emult').textContent = '×' + energyMult().toFixed(2);
+  document.getElementById('p-shopxp').textContent  = '×' + state.shopMultipliers.globalExpBoost.toFixed(2);
+  document.getElementById('p-timewarp').textContent = '×' + state.shopMultipliers.timeWarp.toFixed(2);
+}
+
+// ---- SKILLS ----
+function renderSkills() {
+  const container = document.getElementById('skills-container');
+  container.innerHTML = '';
+  for (const [id, s] of Object.entries(state.skills)) {
+    const meta = SKILL_META[id];
+    const pct  = (s.xp / s.xpNext * 100).toFixed(1);
+    const km   = karmaMultForSkill(id);
+    const card = document.createElement('div');
+    card.className = 'skill-card';
+    card.innerHTML = `
+      <div class="skill-top">
+        <div class="skill-name-full">${meta.icon} ${meta.label}</div>
+        <div class="skill-lv">Lv.${s.level}</div>
+        <div class="karma-mult">${km > 1 ? '✦ ×'+km.toFixed(2)+' XP' : ''}</div>
+      </div>
+      <div class="skill-xp-outer">
+        <div class="skill-xp-fill ${meta.fillClass}" style="width:${pct}%"></div>
+      </div>
+      <div class="skill-xp-text">${s.xp.toFixed(0)} / ${s.xpNext} XP</div>
+    `;
+    container.appendChild(card);
+  }
+}
+
+// ---- KARMA BOX ----
+function renderKarmaBox() {
+  const hasKarma = Object.values(state.karma).some(v => v > 1.001);
+  const box = document.getElementById('karma-box');
+  if (!hasKarma) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+
+  let html = '';
+  for (const [id, val] of Object.entries(state.karma)) {
+    if (val <= 1.001) continue;
+    html += `<div class="karma-row">
+      <span>${SKILL_META[id].icon} ${SKILL_META[id].label}</span>
+      <span class="karma-val">×${val.toFixed(2)} XP</span>
+    </div>`;
+  }
+  document.getElementById('karma-rows').innerHTML = html;
+}
+
+// ---- ECONOMY ----
+function renderEconomy() {
+  const inc = calcIncome(), exp = calcExpenses(), net = calcNet();
+  document.getElementById('money-val').textContent   = Math.floor(state.money).toLocaleString();
+  document.getElementById('income-val').textContent  = '+$' + inc.toFixed(0);
+  document.getElementById('expense-val').textContent = '-$' + exp.toFixed(0);
+  const netEl = document.getElementById('net-val');
+  netEl.textContent = (net>=0?'+':'') + '$' + net.toFixed(0) + '/día';
+  netEl.className = net >= 0 ? 'pos' : 'neg';
+}
+
+// ---- DAILY SUMMARY ----
+function renderDailySummary() {
+  const c = document.getElementById('daily-summary');
+  c.innerHTML = '';
+  tasks.forEach(t => {
+    if (t.minutes <= 0) return;
+    const h=Math.floor(t.minutes/60), m=t.minutes%60;
+    const str = h>0 ? `${h}h${m>0?m+'m':''}` : `${m}m`;
+    const row = document.createElement('div');
+    row.className = 'info-row';
+    row.innerHTML = `<span class="info-label" style="color:${t.color}">${t.icon} ${t.name}</span><span class="info-value">${str}</span>`;
+    c.appendChild(row);
+  });
+  const free = freeMinutes();
+  if (free > 0) {
+    const fh=Math.floor(free/60),fm=free%60;
+    const str=fh>0?`${fh}h${fm>0?fm+'m':''}`:fm+'m';
+    const row=document.createElement('div');
+    row.className='info-row';
+    row.innerHTML=`<span class="info-label" style="color:var(--text-dim)">☀️ Free</span><span class="info-value" style="color:var(--text-dim)">${str}</span>`;
+    c.appendChild(row);
+  }
+}
+
+// ================================================================
+//  LOG & TOAST
+// ================================================================
+function addLog(msg, cls='') {
+  const log = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry ' + cls;
+  entry.textContent = `[V${state.lifeNumber} D${state.day}] ${msg}`;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+  while (log.children.length > 300) log.removeChild(log.firstChild);
+}
+
+function toast(msg, cls='') {
+  const c = document.getElementById('notif');
+  const t = document.createElement('div');
+  t.className = 'notif-toast ' + cls;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 3000);
+}
+
+// ================================================================
+//  SAVE / LOAD  (LocalStorage)
+// ================================================================
+function saveGame() {
+  const saveData = {
+    tasks: tasks.map(t => ({ id:t.id, minutes:t.minutes })),
+    state: state,
+    savedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+    const d = new Date();
+    const ts = d.toLocaleTimeString();
+    document.getElementById('save-status').textContent = `Guardado a las ${ts}`;
+  } catch(e) {
+    document.getElementById('save-status').textContent = 'Error al guardar';
+  }
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+
+    // Restore tasks
+    if (data.tasks) {
+      tasks = defaultTasks();
+      data.tasks.forEach(saved => {
+        const t = tasks.find(x => x.id === saved.id);
+        if (t) t.minutes = saved.minutes || 0;
+      });
+    }
+
+    // Restore state (merge carefully so new fields have defaults)
+    if (data.state) {
+      const s = data.state;
+      state.lifeNumber  = s.lifeNumber  ?? 1;
+      state.karma       = s.karma       ?? defaultKarma();
+      state.day         = s.day         ?? 1;
+      state.dayMinute   = s.dayMinute   ?? 0;
+      state.ageYears    = s.ageYears    ?? 18;
+      state.ageDays     = s.ageDays     ?? 0;
+      state.money       = s.money       ?? 0;
+      state.energy      = s.energy      ?? 0.8;
+      state.happiness   = s.happiness   ?? 0.6;
+      state.health      = s.health      ?? 1.0;
+      state.skills      = s.skills      ?? defaultSkills();
+      state.selectedJob = s.selectedJob ?? 'burger_king';
+      state.paused      = s.paused      ?? false;
+      state.speed       = s.speed       ?? 200;
+      state.shopMultipliers = Object.assign({
+        globalExpBoost:1, timeWarp:1, moneyBoost:1, energyRegen:1
+      }, s.shopMultipliers || {});
+    }
+
+    const d = new Date(data.savedAt);
+    document.getElementById('save-status').textContent = `Cargado — guardado: ${d.toLocaleTimeString()}`;
+    document.getElementById('speed-select').value = String(state.speed);
+    return true;
+  } catch(e) {
+    console.warn('Load failed:', e);
+    return false;
+  }
+}
+
+function resetGame() {
+  if (!confirm('¿Borrar toda la partida y empezar desde cero? (Vida 1, sin karma)')) return;
+  localStorage.removeItem(SAVE_KEY);
+  tasks = defaultTasks();
+  state = {
+    lifeNumber:1, karma: defaultKarma(),
+    day:1, dayMinute:0, ageYears:18, ageDays:0, money:0,
+    energy:0.80, happiness:0.60, health:1.00,
+    skills: defaultSkills(),
+    selectedJob:'burger_king',
+    paused:false, speed:200,
+    shopMultipliers:{ globalExpBoost:1, timeWarp:1, moneyBoost:1, energyRegen:1 },
+  };
+  document.getElementById('save-status').textContent = 'Partida reseteada';
+  document.getElementById('death-overlay').classList.remove('show');
+  renderAll();
+  startTick();
+  addLog('🔄 Partida reseteada. Vida 1.', 'highlight');
+}
+
+// ================================================================
+//  CONTROLS
+// ================================================================
+document.getElementById('btn-playpause').addEventListener('click', () => {
+  state.paused = !state.paused;
+  document.getElementById('btn-playpause').textContent = state.paused ? '▶ PLAY' : '⏸ PAUSE';
+  addLog(state.paused ? '⏸ Pausado' : '▶ Reanudado');
+});
+
+document.getElementById('speed-select').addEventListener('change', e => {
+  state.speed = parseInt(e.target.value);
+  startTick();
+});
+
+document.getElementById('btn-save').addEventListener('click', () => {
+  saveGame();
+  toast('💾 Partida guardada', 'money');
+});
+
+document.getElementById('btn-reset').addEventListener('click', resetGame);
+
+// Auto-save every 10 seconds
+setInterval(() => { saveGame(); }, SAVE_INTERVAL_MS);
+
+// ================================================================
+//  INIT
+// ================================================================
+const loaded = loadGame();
+if (loaded) {
+  addLog('💾 Partida cargada correctamente.', 'highlight');
+} else {
+  addLog('🐿️ Bienvenido a Groundhog Life. ¡Organiza tu día!', 'highlight');
+  addLog('Asigna horas a cada tarea y elige tu empleo.', '');
+  addLog('Al morir a los 70 años, el karma acelera tu siguiente vida.', 'karma');
+}
+
+renderAll();
+if (!state.paused) startTick();
+else document.getElementById('btn-playpause').textContent = '▶ PLAY';
+
+</script>
+</body>
+</html>
